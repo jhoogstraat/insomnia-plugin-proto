@@ -4,42 +4,19 @@ const path = require('path');
 const fs = require('fs');
 
 const _protos = {}
+const _requestToProto = {}
 
 async function decodeResponse(context) {
-  let protoDescriptor = _protos[context.request.getId()]
+  const Type = _requestToProto[context.request.getId()]
+  console.log(Type, typeof(Type), util.inspect(Type))
 
-  // if (!protoDescriptor) {
-  //   protoDescriptor = await context.store.getItem(`proto.${context.request.getId()}`)
-  //   if (!protoDescriptor) {
-  //       console.log("[protobuf]: Skipping... request has no proto descriptor")
-  //       return
-  //   } else {
-  //     _cache[context.request.getId()] = protoDescriptor
-  //   }
-  // }
-
-  const protoDir = await context.request.getEnvironmentVariable("PROTO_DIR")
-  if (!protoDir) {
-      console.log("[proto]: Skipping... no [PROTO_DIR] present in environment")
-      return
+  if (Type) {
+    const body = context.response.getBody()
+    const proto = Type.decode(body)
+    context.response.setBody(util.inspect(proto))
   }
-
-  protoDescriptor = { file: "SyncCatalog.proto", type: "SyncCatalogProto" }
-
-  const Proto = await protobuf.load(protoDir + protoDescriptor.file)
-  const Type = Proto.lookupType(protoDescriptor.type)
-  _protos[context.request.getId()] = Type
-
-  console.log(_protos[context.request.getId()])
-  const body = context.response.getBody()
-  const proto = Type.decode(body)
-  console.log(util.inspect(proto))
-  
-  context.response.setBody(util.inspect(proto))
 }
 
-module.exports.requestHooks = []
-module.exports.responseHooks = [decodeResponse]
 
 let files
 let types = []
@@ -71,33 +48,33 @@ module.exports.templateTags = [
       },
     ],
     async run(context, reqId, file, type) {
-      console.log(context)
       if (!context.context.PROTO_PATH) {
         return "No [PROTO_PATH] present in environment"
       }
 
       if (!files) {
         files = fs.readdirSync(context.context.PROTO_PATH).filter(file => file.endsWith(".proto"))
-      }
-    
+      } 
+      
       if (arrayContains(files, file)) {
-        if (arrayContains(types, type)) {
-          context.store.setItem(reqId, _protos[file].lookupType(type))
-          return util.inspect({ file: file, type: type })
-        }
-
         if (file in _protos === false) {
           _protos[file] = await protobuf.load(path.join(context.context.PROTO_PATH, file))
         }
-
+        
         types = Object.keys(_protos[file].nested)
-
-        return "Found types:\n" + types
-      } else {
-        types = undefined
       }
 
-      return "Found files:\n" + files
+      if (arrayContains(files, file) && arrayContains(types, type)) {
+        _requestToProto[reqId] = _protos[file].lookupType(type)
+        return util.inspect({ file: file, type: type })
+      } else {
+        _requestToProto[reqId] = null
+      }
+
+      return `Files:\n${files}\n\nTypes:\n${types}`
     }
   }
-];
+]
+
+module.exports.requestHooks = []
+module.exports.responseHooks = [decodeResponse]
