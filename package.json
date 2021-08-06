@@ -1,0 +1,17 @@
+{
+  "name": "insomnia-plugin-proto",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "insomnia": {
+    "name": "proto",
+    "displayName": "Protobuf Plugin",
+    "description": "...",
+    "publisher": {
+      "name": "jhoogstraat"
+    }
+  },
+  "dependencies": {
+    "protobufjs": "^6.11.2"
+  }
+}
