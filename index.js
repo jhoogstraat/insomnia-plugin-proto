@@ -1,80 +1,116 @@
 const protobuf = require("protobufjs")
 const util = require('util')
-const path = require('path');
-const fs = require('fs');
+const fs = require("fs")
+const os = require("os")
+const path = require("path")
 
-const _protos = {}
-const _requestToProto = {}
+async function encodeRequest(context) {
+  let proto = JSON.parse(context.request.getHeader("x-use-proto"))
+  
+  if (!proto) { return }
 
-async function decodeResponse(context) {
-  const Type = _requestToProto[context.request.getId()]
-  console.log(Type, typeof(Type), util.inspect(Type))
+  console.log("Request")
 
-  if (Type) {
-    const body = context.response.getBody()
-    const proto = Type.decode(body)
-    context.response.setBody(util.inspect(proto))
+  const root = await protobuf.load(proto.reqProtoPath)
+  const Message = root.lookupType(proto.reqProtoType)
+
+  if (Message && context.request.getHeader("Content-Type") == "application/json") {
+    const body = JSON.parse(context.request.getBody().text)
+    const errMsg = Message.verify(body)
+    if (errMsg) { throw Error(errMsg) }
+    const message = Message.create(body)
+    const serialized = Message.encode(message).finish()
+    let filePath = writeAsTmpFile(serialized)
+
+    context.request.setBody({ fileName: filePath })
+    context.request.setHeader("content-type", proto.contentType)
+    context.request.removeHeader("x-use-proto")
+  } else {
+    throw Error("Message type not found or content-type not application/json (only supported)")
   }
 }
 
+async function decodeResponse(context) {
+  let proto = JSON.parse(context.request.getHeader("x-use-proto"))
+  if (!proto || context.response.getHeader("content-type") != proto.contentType) { return }
 
-let files
-let types = []
+  console.log("Response")
 
-function arrayContains(array, value) {
-  if (!Array.isArray(array)) { return false }
+  if (!proto.resProtoPath || !proto.resProtoType) { return }
 
-  return array.includes(value)
+  const root = await protobuf.load(proto.resProtoPath)
+  const Message = root.lookupType(proto.resProtoType)
+
+  if (Message) {
+    const body = context.response.getBody()
+    const deserialized = Message.decode(body)
+    context.response.setBody(JSON.stringify(deserialized))
+  }
+}
+
+function writeAsTmpFile(buffer) {
+  let tmp = os.tmpdir()
+  let base = path.join(tmp, "insomnia-proto")
+
+  if (!fs.existsSync(base)) {
+    fs.mkdirSync(base)
+  }
+
+  let filePath = path.join(
+    base,
+    String(Math.floor(Math.random() * 3000000000))
+  )
+
+  fs.writeFileSync(filePath, buffer)
+
+  return filePath
 }
 
 module.exports.templateTags = [
   {
     name: 'proto',
-    displayName: 'Protobuf',
-    description: 'Set Protobuf Type',
+    displayName: 'Protobuf Config',
+    description: 'Set proto files for request and response bodies',
     args: [
       {
-        displayName: 'Request',
-        type: 'model',
-        model: 'Request',
+        displayName: "Request Proto",
+        description: "The request .proto file",
+        type: 'file',
       },
       {
+        displayName: args => "Type",
         type: 'string',
-        displayName: args => "File - " + (arrayContains(files, args[1].value) ? "valid" : "invalid")
       },
       {
+        displayName: "Response Proto",
+        description: "The response .proto file",
+        type: 'file',
+      },
+      {
+        displayName: args => "Type",
         type: 'string',
-        displayName: args => "Type - " + (arrayContains(types, args[2].value) ? "valid" : "invalid")
+      },
+      {
+        displayName: args => "content-type (used in requests and responses)",
+        type: 'string',
+        placeholder: "application/x-protobuf",
+        defaultValue: "application/x-protobuf"
       },
     ],
-    async run(context, reqId, file, type) {
-      if (!context.context.PROTO_PATH) {
-        return "No [PROTO_PATH] present in environment"
+    async run(context, reqProtoPath, reqProtoType, resProtoPath, resProtoType, contentType) {
+
+      const data = {
+        reqProtoPath,
+        reqProtoType,
+        resProtoPath,
+        resProtoType,
+        contentType
       }
 
-      if (!files) {
-        files = fs.readdirSync(context.context.PROTO_PATH).filter(file => file.endsWith(".proto"))
-      } 
-      
-      if (arrayContains(files, file)) {
-        if (file in _protos === false) {
-          _protos[file] = await protobuf.load(path.join(context.context.PROTO_PATH, file))
-        }
-        
-        types = Object.keys(_protos[file].nested)
-      }
-
-      if (arrayContains(files, file) && arrayContains(types, type)) {
-        _requestToProto[reqId] = _protos[file].lookupType(type)
-        return util.inspect({ file: file, type: type })
-      } else {
-        _requestToProto[reqId] = null
-      }
-
-      return `Files:\n${files}\n\nTypes:\n${types}`
+      return JSON.stringify(data)
     }
   }
 ]
 
-module.exports.requestHooks = []
+module.exports.requestHooks = [encodeRequest]
 module.exports.responseHooks = [decodeResponse]

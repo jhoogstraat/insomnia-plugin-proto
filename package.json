@@ -1,17 +1,17 @@
 {
   "name": "insomnia-plugin-proto",
   "version": "1.0.0",
-  "description": "",
   "main": "index.js",
+
   "insomnia": {
-    "name": "proto",
-    "displayName": "Protobuf Plugin",
-    "description": "...",
+    "name": "protobuf",
+    "displayName": "Protobuf",
+    "description": "Use protocol buffers with insomnia",
     "publisher": {
       "name": "jhoogstraat"
     }
   },
   "dependencies": {
-    "protobufjs": "^6.11.2"
+    "protobufjs": "^7.2.2"
   }
 }
