@@ -5,11 +5,12 @@ const os = require("os")
 const path = require("path")
 
 async function encodeRequest(context) {
+  context.request.removeHeader("x-proto-disabled")
+
   let proto = JSON.parse(context.request.getHeader("x-use-proto"))
   
   if (!proto) { return }
-
-  console.log("Request")
+  if (!proto.reqProtoPath || !proto.reqProtoType) { return }
 
   const root = await protobuf.load(proto.reqProtoPath)
   const Message = root.lookupType(proto.reqProtoType)
@@ -32,10 +33,8 @@ async function encodeRequest(context) {
 
 async function decodeResponse(context) {
   let proto = JSON.parse(context.request.getHeader("x-use-proto"))
+
   if (!proto || context.response.getHeader("content-type") != proto.contentType) { return }
-
-  console.log("Response")
-
   if (!proto.resProtoPath || !proto.resProtoType) { return }
 
   const root = await protobuf.load(proto.resProtoPath)
@@ -67,6 +66,21 @@ function writeAsTmpFile(buffer) {
 }
 
 module.exports.templateTags = [
+  {
+    name: 'protoEnable',
+    displayName: 'Enable Protobuf',
+    description: 'Enable or disable protobuf conversion',
+    args: [
+      {
+        displayName: "Enable Protobuf conversion",
+        defaultValue: true,
+        type: 'boolean'
+      }
+    ],
+    async run(context, enabled) {
+      return enabled ? 'x-use-proto' : 'x-proto-disabled'
+    }
+  },
   {
     name: 'proto',
     displayName: 'Protobuf Config',
