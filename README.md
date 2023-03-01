@@ -2,15 +2,14 @@
 Use protobuffers in your request and response bodies.
 
 ## How-to
-1) Add the header `x-use-proto` (removed when requests are sent)
-2) Set the headers value to the `Protobuf Config` template.
+1) set to body type to `JSON`
+1) Select `Toggle Description` and add the `Protobuf Config` template to the `Content-Type` headers description (see example below)
 3) Set the request/response `.proto` files and types (one or both)
 
-## Request
-Use `JSON` in your body as normal (See [protobufjs](https://www.npmjs.com/package/protobufjs#using-proto-files) for details on the conversion to protobuf).
-
-## Response
-Set the content-type in the `Protobuf Config` to match the content-type of the response (Used to identify protobuf responses).
+## Tips
+- See [protobufjs](https://www.npmjs.com/package/protobufjs#using-proto-files) for details on the conversion from json to protobuf
+- The request `Content-Type` will automatically be replaced with the configured content-type.
+- The response `Content-Type` must match the configured content-type for the plugin to convert the response body back to json
 
 ## Example
 ![Header Setup](header_howto.png)

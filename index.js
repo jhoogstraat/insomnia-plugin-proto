@@ -5,15 +5,13 @@ const os = require("os")
 const path = require("path")
 
 async function encodeRequest(context) {
-  context.request.removeHeader("x-proto-disabled")
+  let config = JSON.parse(await context.store.getItem("protobuf_" + context.request.getId()))
 
-  let proto = JSON.parse(context.request.getHeader("x-use-proto"))
-  
-  if (!proto) { return }
-  if (!proto.reqProtoPath || !proto.reqProtoType) { return }
+  if (!config) { return }
+  if (!config.reqProtoPath || !config.reqProtoType) { return }
 
-  const root = await protobuf.load(proto.reqProtoPath)
-  const Message = root.lookupType(proto.reqProtoType)
+  const root = await protobuf.load(config.reqProtoPath)
+  const Message = root.lookupType(config.reqProtoType)
 
   if (Message && context.request.getHeader("Content-Type") == "application/json") {
     const body = JSON.parse(context.request.getBody().text)
@@ -24,21 +22,21 @@ async function encodeRequest(context) {
     let filePath = writeAsTmpFile(serialized)
 
     context.request.setBody({ fileName: filePath })
-    context.request.setHeader("content-type", proto.contentType)
-    context.request.removeHeader("x-use-proto")
+    context.request.setHeader("content-type", config.contentType)
   } else {
     throw Error("Message type not found or content-type not application/json (only supported)")
   }
 }
 
 async function decodeResponse(context) {
-  let proto = JSON.parse(context.request.getHeader("x-use-proto"))
+  let config = JSON.parse(await context.store.getItem("protobuf_" + context.response.getRequestId()))
 
-  if (!proto || context.response.getHeader("content-type") != proto.contentType) { return }
-  if (!proto.resProtoPath || !proto.resProtoType) { return }
+  if (context.response.getHeader("content-type") != config.contentType) { return }
+  if (!config) { return }
+  if (!config.resProtoPath || !config.resProtoType) { return }
 
-  const root = await protobuf.load(proto.resProtoPath)
-  const Message = root.lookupType(proto.resProtoType)
+  const root = await protobuf.load(config.resProtoPath)
+  const Message = root.lookupType(config.resProtoType)
 
   if (Message) {
     const body = context.response.getBody()
@@ -66,21 +64,6 @@ function writeAsTmpFile(buffer) {
 }
 
 module.exports.templateTags = [
-  {
-    name: 'protoEnable',
-    displayName: 'Enable Protobuf',
-    description: 'Enable or disable protobuf conversion',
-    args: [
-      {
-        displayName: "Enable Protobuf conversion",
-        defaultValue: true,
-        type: 'boolean'
-      }
-    ],
-    async run(context, enabled) {
-      return enabled ? 'x-use-proto' : 'x-proto-disabled'
-    }
-  },
   {
     name: 'proto',
     displayName: 'Protobuf Config',
@@ -112,8 +95,7 @@ module.exports.templateTags = [
       },
     ],
     async run(context, reqProtoPath, reqProtoType, resProtoPath, resProtoType, contentType) {
-
-      const data = {
+      const config = {
         reqProtoPath,
         reqProtoType,
         resProtoPath,
@@ -121,7 +103,9 @@ module.exports.templateTags = [
         contentType
       }
 
-      return JSON.stringify(data)
+      await context.store.setItem("protobuf_" + context.meta.requestId, JSON.stringify(config))
+
+      return "Config valid"
     }
   }
 ]
